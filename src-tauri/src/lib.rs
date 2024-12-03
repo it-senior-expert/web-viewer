@@ -5,14 +5,12 @@ lazy_static! {
     static ref AUTO_START_SELECTED: Mutex<bool> = Mutex::new(false);
     static ref ALWAYS_ON_TOP: Mutex<bool> = Mutex::new(false);
     static ref DESIRED_WIDTH_RATIO: Mutex<f64> = Mutex::new(5.0);
-    static ref MAINVIEW: Mutex<String> = Mutex::new(
-        "https://github.com/tauri-apps/tauri".to_string()
-    );
+    static ref WEBVIEW1: Mutex<Option<Arc<Mutex<Webview>>>> = Mutex::new(None);
 }
 use tauri_plugin_store::StoreExt;
 use serde_json::json;
-use std::sync::Mutex;
-use tauri::{ LogicalPosition, LogicalSize, Manager, WebviewUrl };
+use std::sync::{ Arc, Mutex };
+use tauri::{ LogicalPosition, LogicalSize, Manager, Webview, WebviewUrl };
 use tauri::image::Image;
 use tauri::{
     menu::{ Menu, MenuItem, MenuBuilder, SubmenuBuilder, MenuItemBuilder },
@@ -27,10 +25,10 @@ fn submit_width(app_handle: AppHandle, width_: f64) {
 }
 
 #[tauri::command]
-fn new_url(app_handle: tauri::AppHandle, url: String) {
+fn new_url(_app_handle: tauri::AppHandle, url: String) {
     println!("{}", &format!("window.location.href = '{}';", url));
-    if let Some(webview) = app_handle.get_webview_window("main2") {
-        if let Err(e) = webview.eval(&format!("window.location.href = '{}';", url)) {
+    if let Some(webview) = &*WEBVIEW1.lock().unwrap() {
+        if let Err(e) = webview.lock().unwrap().eval(&format!("window.location.href = '{}';", url)) {
             eprintln!("Error while evaluating script: {}", e);
         } else {
             println!("Successfully changed URL to: {}", url);
@@ -54,7 +52,7 @@ pub fn run() {
                 .body("This is webview appication.")
                 .show()
                 .unwrap();
-    
+
             // Create menu items
             let github = MenuItemBuilder::with_id("Github", "Github").build(app)?;
             let gpt = MenuItemBuilder::with_id("GPT", "GPT").build(app)?;
@@ -111,11 +109,11 @@ pub fn run() {
 
             // Initialize the main window (hidden)
             let window = app.get_window("main").unwrap();
-            
-            let width: f64 ;
-            let height: f64 ;
+
+            let width: f64;
+            let height: f64;
             let mut scale = 1.0;
-            
+
             if let Ok(Some(monitor)) = window.current_monitor() {
                 scale = monitor.scale_factor();
             } else {
@@ -127,34 +125,42 @@ pub fn run() {
             } else {
                 todo!();
             }
-            
+
             // Open the store to retrieve data
             let store = app.store("store.json")?;
             let ratio_value: f64 = store
-            .get("ratio_of_screen")
-            .and_then(|v| v.get("value").cloned()) // Clone the value to own it
-            .and_then(|v| v.as_f64()) // Convert the cloned value to f64
-            .unwrap_or(5.0);
+                .get("ratio_of_screen")
+                .and_then(|v| v.get("value").cloned()) // Clone the value to own it
+                .and_then(|v| v.as_f64()) // Convert the cloned value to f64
+                .unwrap_or(5.0);
             *DESIRED_WIDTH_RATIO.lock().unwrap() = ratio_value;
-            
+
             // Calculate the webview widths based on the ratio
             let desired_width_ratio = *DESIRED_WIDTH_RATIO.lock().unwrap();
             let new_webview_width2 = (width as f64) / desired_width_ratio;
             let new_webview_width1 = (width as f64) - new_webview_width2;
             // submit_width(app.handle().clone(), new_webview_width1);
 
-            window.set_min_size(Some(tauri::LogicalSize::new(width, height)))
-            .expect("Failed to set window minimum size");
+            window
+                .set_min_size(Some(tauri::LogicalSize::new(width, height)))
+                .expect("Failed to set window minimum size");
 
             // Add the first webview (left side)
             let webview1 = window.add_child(
                 tauri::webview::WebviewBuilder
-                    ::new("main2", WebviewUrl::External("https://github.com/tauri-apps/tauri/".parse().unwrap()))
+                    ::new(
+                        "main2",
+                        WebviewUrl::External(
+                            "https://github.com/tauri-apps/tauri/".parse().unwrap()
+                        )
+                    )
                     .devtools(true)
                     .auto_resize(),
                 LogicalPosition::new(0.0, 45.0),
                 LogicalSize::new(new_webview_width1, (height as f64) - 45.0)
             )?;
+
+            *WEBVIEW1.lock().unwrap() = Some(Arc::new(Mutex::new(webview1.clone())));
 
             // Add the second webview (right side)
             let webview2 = window.add_child(
@@ -222,7 +228,6 @@ pub fn run() {
 
                 webview2.set_position(LogicalPosition::new(new_webview_width1, 0.0)).unwrap();
             });
-
             Ok(())
         })
         .invoke_handler(tauri::generate_handler![submit_width, new_url])

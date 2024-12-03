@@ -41,19 +41,27 @@ function App() {
     <main
       style={{ width: width_ }}
       className="input-container">
-      <input
-        id="url-input"
-        className="input"
-        onChange={(e) => setUrl(e.currentTarget.value)}
-        placeholder="Enter a URL..."
-      />
-      <button
-        className="open-button"
-        style={{ width: '80px' }}
-        onClick={urlFunction}
+      <form
+        onSubmit={(e) => {
+          e.preventDefault();
+          urlFunction();
+        }}
       >
-        Open
-      </button>
+
+        <input
+          id="url-input"
+          className="input"
+          onChange={(e) => setUrl(e.currentTarget.value)}
+          placeholder="Enter a URL..."
+        />
+        <button
+          className="open-button"
+          style={{ width: '80px' }}
+          type="submit"
+        >
+          Open
+        </button>
+      </form>
     </main>
   );
 }
