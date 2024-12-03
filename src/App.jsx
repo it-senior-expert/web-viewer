@@ -1,14 +1,10 @@
 import { useEffect, useState, useLayoutEffect } from "react";
-import "./App.css";
 import { invoke } from "@tauri-apps/api/core";
 import { listen } from '@tauri-apps/api/event';
 import { load } from '@tauri-apps/plugin-store';
-import { emit } from '@tauri-apps/api/event';
-
-import { useToast } from "@chakra-ui/react";
+import "./App.css";
 
 function App() {
-  const toast = useToast();
 
   const [url, setUrl] = useState("");
   const [width_, setWidth_] = useState();
@@ -47,7 +43,6 @@ function App() {
           urlFunction();
         }}
       >
-
         <input
           id="url-input"
           className="input"

@@ -26,7 +26,6 @@ fn submit_width(app_handle: AppHandle, width_: f64) {
 
 #[tauri::command]
 fn new_url(_app_handle: tauri::AppHandle, url: String) {
-    println!("{}", &format!("window.location.href = '{}';", url));
     if let Some(webview) = &*WEBVIEW1.lock().unwrap() {
         if let Err(e) = webview.lock().unwrap().eval(&format!("window.location.href = '{}';", url)) {
             eprintln!("Error while evaluating script: {}", e);
@@ -223,7 +222,7 @@ pub fn run() {
                 let new_webview_width1 = (width as f64) - new_webview_width2;
 
                 // Update the size of both webviews
-                webview1.set_size(LogicalSize::new(new_webview_width1, height as f64)).unwrap();
+                webview1.set_size(LogicalSize::new(new_webview_width1, height as f64 - 45.0)).unwrap();
                 webview2.set_size(LogicalSize::new(new_webview_width2, height as f64)).unwrap();
 
                 webview2.set_position(LogicalPosition::new(new_webview_width1, 0.0)).unwrap();
