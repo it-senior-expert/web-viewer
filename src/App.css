@@ -1,0 +1,54 @@
+body{
+  margin: 8px 5px;
+}
+
+/* Container to center and add spacing */
+.input-container {
+  position: relative;
+  width: 100%;
+  box-sizing: border-box;
+  font-family: Arial, sans-serif;
+}
+
+/* Input field styling */
+.input {
+  width: calc(100% - 100px);
+  padding: 3px 0 3px 2px;  /* Add space for the clear button */
+  border: 2px solid #ddd;
+  border-radius: 8px;
+  font-size: 16px;
+  transition: all 0.3s ease;
+  outline: none;
+  background-color: #f9f9f9;
+}
+
+.input:focus {
+  border-color: #4a90e2;
+  background-color: #fff;
+  box-shadow: 0 0 5px rgba(72, 130, 237, 0.5);
+}
+
+.open-button {
+  width: 80px;
+  margin-left: 3px;
+  border: none;
+  padding: 3px 7px;
+  border-radius: 8px; /* Rounded corners */
+  font-size: 16px;
+  font-weight: bold;
+  border: 2px solid #ddd;
+  color: darkgrey;
+  cursor: pointer;
+  transition: all 0.3s ease; /* Smooth transition for hover effect */
+  outline: none;
+}
+
+.open-button:hover {
+  box-shadow: 0 6px 16px rgba(0, 0, 0, 0.1); /* Deepen shadow */
+}
+
+.open-button:focus {
+  outline: none;
+  background-color: #fff;
+}
+
