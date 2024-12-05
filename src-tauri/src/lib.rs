@@ -6,6 +6,7 @@ lazy_static! {
     static ref ALWAYS_ON_TOP: Mutex<bool> = Mutex::new(false);
     static ref DESIRED_WIDTH_RATIO: Mutex<f64> = Mutex::new(5.0);
     static ref WEBVIEW1: Mutex<Option<Arc<Mutex<Webview>>>> = Mutex::new(None);
+    static ref WEBVIEW2: Mutex<Option<Arc<Mutex<Webview>>>> = Mutex::new(None);
 }
 use tauri_plugin_store::StoreExt;
 use serde_json::json;
@@ -25,12 +26,24 @@ fn submit_width(app_handle: AppHandle, width_: f64) {
 }
 
 #[tauri::command]
-fn new_url(_app_handle: tauri::AppHandle, url: String) {
+fn new_left_url(_app_handle: tauri::AppHandle, url: String) {
     if let Some(webview) = &*WEBVIEW1.lock().unwrap() {
         if let Err(e) = webview.lock().unwrap().eval(&format!("window.location.href = '{}';", url)) {
             eprintln!("Error while evaluating script: {}", e);
         } else {
-            println!("Successfully changed URL to: {}", url);
+            println!("Successfully changed Left URL to: {}", url);
+        }
+    } else {
+        eprintln!("Error: Webview 'main2' not found!");
+    }
+}
+#[tauri::command]
+fn new_right_url(_app_handle: tauri::AppHandle, url: String) {
+    if let Some(webview) = &*WEBVIEW2.lock().unwrap() {
+        if let Err(e) = webview.lock().unwrap().eval(&format!("window.location.href = '{}';", url)) {
+            eprintln!("Error while evaluating script: {}", e);
+        } else {
+            println!("Successfully changed Riht URL to: {}", url);
         }
     } else {
         eprintln!("Error: Webview 'main2' not found!");
@@ -53,10 +66,8 @@ pub fn run() {
                 .unwrap();
 
             // Create menu items
-            let github = MenuItemBuilder::with_id("Github", "Github").build(app)?;
-            let gpt = MenuItemBuilder::with_id("GPT", "GPT").build(app)?;
             let guide = MenuItemBuilder::with_id("Guide", "Guide").build(app)?;
-            let menu = MenuBuilder::new(app).items(&[&github, &gpt, &guide]).build()?;
+            let menu = MenuBuilder::new(app).items(&[&guide]).build()?;
             let submenu = SubmenuBuilder::new(app, "Resize")
                 .item(&MenuItem::with_id(app, "8:2", "8:2", true, None::<&str>)?)
                 .item(&MenuItem::with_id(app, "7:3", "7:3", true, None::<&str>)?)
@@ -150,13 +161,13 @@ pub fn run() {
                     ::new(
                         "main2",
                         WebviewUrl::External(
-                            "https://github.com/tauri-apps/tauri/".parse().unwrap()
+                            "https://google.com/".parse().unwrap()
                         )
                     )
                     .devtools(true)
                     .auto_resize(),
-                LogicalPosition::new(0.0, 45.0),
-                LogicalSize::new(new_webview_width1, (height as f64) - 45.0)
+                LogicalPosition::new(0.0, 70.0),
+                LogicalSize::new(new_webview_width1, (height as f64) - 70.0)
             )?;
 
             *WEBVIEW1.lock().unwrap() = Some(Arc::new(Mutex::new(webview1.clone())));
@@ -164,32 +175,20 @@ pub fn run() {
             // Add the second webview (right side)
             let webview2 = window.add_child(
                 tauri::webview::WebviewBuilder
-                    ::new("main3", WebviewUrl::External("https://chatgpt.com/".parse().unwrap()))
+                    ::new("main3", WebviewUrl::External("https://google.com/".parse().unwrap()))
                     .devtools(true)
                     .auto_resize(),
-                LogicalPosition::new(new_webview_width1, 0.0), // Position the second webview
-                LogicalSize::new(new_webview_width2, height as f64) // Width based on the ratio
+                LogicalPosition::new(new_webview_width1, 34.0), // Position the second webview
+                LogicalSize::new(new_webview_width2, (height as f64) - 34.0) // Width based on the ratio
             )?;
+
+            *WEBVIEW2.lock().unwrap() = Some(Arc::new(Mutex::new(webview2.clone())));
 
             // Event handler for menu items
             app.on_menu_event(move |app, event| {
                 let app_handle = app.app_handle().clone();
                 let mut desired_width_ratio = DESIRED_WIDTH_RATIO.lock().unwrap(); // Access the shared ratio
-                if event.id() == "Github" {
-                    println!("Github triggered!");
-                    // Change the URL of the first webview when Github is clicked
-                    webview2
-                        .eval("window.location.href = 'https://github.com/tauri-apps/tauri';")
-                        .unwrap();
-                } else if event.id() == "GPT" {
-                    println!("GPT triggered!");
-                    // Change the URL of the second webview when GPT is clicked
-                    webview2.eval("window.location.href = 'https://chatgpt.com/';").unwrap();
-                } else if event.id() == "Guide" {
-                    println!("Guide triggered!");
-                    // Example: Set a different URL for Guide
-                    webview2.eval("window.location.href = 'https://www.guide.com';").unwrap();
-                } else if event.id() == "8:2" {
+                if event.id() == "8:2" {
                     *desired_width_ratio = 5.0; // Set ratio to 80:20
                     submit_width(
                         app_handle.clone(),
@@ -222,14 +221,14 @@ pub fn run() {
                 let new_webview_width1 = (width as f64) - new_webview_width2;
 
                 // Update the size of both webviews
-                webview1.set_size(LogicalSize::new(new_webview_width1, height as f64 - 45.0)).unwrap();
-                webview2.set_size(LogicalSize::new(new_webview_width2, height as f64)).unwrap();
+                webview1.set_size(LogicalSize::new(new_webview_width1, height as f64 - 70.0)).unwrap();
+                webview2.set_size(LogicalSize::new(new_webview_width2, height as f64 - 34.0)).unwrap();
 
-                webview2.set_position(LogicalPosition::new(new_webview_width1, 0.0)).unwrap();
+                webview2.set_position(LogicalPosition::new(new_webview_width1, 34.0)).unwrap();
             });
             Ok(())
         })
-        .invoke_handler(tauri::generate_handler![submit_width, new_url])
+        .invoke_handler(tauri::generate_handler![submit_width, new_left_url, new_right_url])
         .run(tauri::generate_context!())
         .expect("error while running tauri application");
 }
