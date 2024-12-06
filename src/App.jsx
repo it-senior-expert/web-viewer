@@ -6,15 +6,15 @@ import { FiRefreshCcw, FiX, FiMinimize2, FiMaximize2 } from "react-icons/fi";
 import { invoke } from "@tauri-apps/api/core";
 import { listen } from '@tauri-apps/api/event';
 import { load } from '@tauri-apps/plugin-store';
-import { currentMonitor, getCurrentWindow } from '@tauri-apps/api/window';
+import { getCurrentWindow } from '@tauri-apps/api/window';
 import "./App.css";
 
-import { getUrlById, isValidUrl, saveToLocalStorage, loadFromLocalStorage } from "./utils";
+import { isValidUrl, saveToLocalStorage, loadFromLocalStorage } from "./utils";
 
 function App() {
   const [url_, setUrl_] = useState("https://google.com");
   const [width_, setWidth_] = useState();
-  const [tabs, setTabs] = useState([{ id: 1, name: 'google', url: 'https://google.com' }]);
+  const [tabs, setTabs] = useState([]);
   const [activeTab, setActiveTab] = useState(0);
   const containerRef = useRef(null);
   const toast = useToast();
@@ -64,7 +64,7 @@ function App() {
   }
 
   const rightURLSubmit = async (index) => {
-    const right_url = getUrlById(tabs, index + 1);
+    const right_url = tabs[index].url;
     try {
       await invoke('new_right_url', { url: right_url });
     } catch (error) {
@@ -73,14 +73,15 @@ function App() {
   };
 
   useLayoutEffect(() => {
+    try {
+      const newTabs = loadFromLocalStorage('tabs');
+      console.log(newTabs)
+      setTabs(newTabs);
+    } catch (error) {
+      setTabs([{ id: 1, name: 'Google', url: 'https://google.com' }])
+    }
     const fetchData = async () => {
       const store = await load('store.json', { autoSave: false });
-      try {
-        const newTabs = await loadFromLocalStorage('tabs');
-        setTabs(newTabs);
-      } catch (error) {
-        setTabs([{ id: 1, name: 'Google', url: 'https://google.com' }])
-      }
       try {
         const val = await store.get('left_width');
         const newWidth = val["value"];
@@ -101,7 +102,7 @@ function App() {
   useEffect(() => {
     const fetchData = async () => {
       const store = await load('store.json', { autoSave: false });
-      if(width_ !== undefined){
+      if (width_ !== undefined) {
         await store.set('left_width', { value: width_ });
       }
     };
@@ -126,11 +127,11 @@ function App() {
     e.preventDefault();
     const startX = e.clientX; // Initial mouse position
     const initialWidth = width_; // Current width value
-  
+
     const handleMouseMove = async (moveEvent) => {
       const deltaX = moveEvent.clientX - startX; // Difference in X position
       const newWidth = Math.max(0, initialWidth + deltaX); // Ensure width doesn't go negative
-  
+
       setWidth_(newWidth);
       try {
         await invoke('new_left_width', { width: newWidth });
@@ -138,12 +139,12 @@ function App() {
         console.error("Error invoking Tauri command:", error);
       }
     };
-  
+
     const handleMouseUp = () => {
       document.removeEventListener('mousemove', handleMouseMove);
       document.removeEventListener('mouseup', handleMouseUp);
     };
-  
+
     document.addEventListener('mousemove', handleMouseMove);
     document.addEventListener('mouseup', handleMouseUp);
   };
@@ -274,7 +275,7 @@ function App() {
       </Tabs>
       <Box
         width='100%'
-        height='calc(100vh - 85px)'
+        height='calc(100vh - 83px)'
         ref={containerRef}
       >
         <Box
