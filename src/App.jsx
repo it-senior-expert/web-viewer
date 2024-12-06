@@ -1,4 +1,4 @@
-import { useEffect, useState, useLayoutEffect } from "react";
+import { useEffect, useState, useLayoutEffect, useRef } from "react";
 import { Box, Tabs, TabList, Tab, Button, Input, IconButton } from '@chakra-ui/react';
 import { ChakraProvider } from "@chakra-ui/react";
 import { useToast } from "@chakra-ui/react";
@@ -6,19 +6,20 @@ import { FiRefreshCcw, FiX, FiMinimize2, FiMaximize2 } from "react-icons/fi";
 import { invoke } from "@tauri-apps/api/core";
 import { listen } from '@tauri-apps/api/event';
 import { load } from '@tauri-apps/plugin-store';
+import { currentMonitor, getCurrentWindow } from '@tauri-apps/api/window';
 import "./App.css";
 
-import { getUrlById } from "./utils";
+import { getUrlById, isValidUrl, saveToLocalStorage, loadFromLocalStorage } from "./utils";
 
 function App() {
   const [url_, setUrl_] = useState("https://google.com");
   const [width_, setWidth_] = useState();
-  const [tabs, setTabs] = useState([{ id: 1, name: 'Google', url: 'https://google.com' }]);
+  const [tabs, setTabs] = useState([{ id: 1, name: 'google', url: 'https://google.com' }]);
   const [activeTab, setActiveTab] = useState(0);
-
+  const containerRef = useRef(null);
   const toast = useToast();
 
-  const removeTab = (tabId) => {
+  const removeTab = async (tabId) => {
     const updatedTabs = tabs.filter((tab) => tab.id !== tabId);
     setTabs(updatedTabs);
     if (updatedTabs.length === 0) {
@@ -28,39 +29,33 @@ function App() {
     }
   };
 
-  const isValidUrl = (str) => {
-    try {
-      new URL(str);
-      return true;
-    } catch (_) {
-      return false;
-    }
-  };
-
   const leftURLSubmit = async (e) => {
     e.preventDefault();
-    if (!isValidUrl(url_)) {
+    let left_url = url_
+    if (!left_url.includes("https://")) {
+      left_url = "https://" + left_url
+    }
+    if (!isValidUrl(left_url)) {
       toast({
         title: "Invalid URL",
-        description: "Input Exact URL!",
         status: "warning",
+        position: 'top-left',
         duration: 2000,
         isClosable: true,
       });
       return;
     }
-
-    const domain = new URL(url_).hostname.split('.')[0];
-    const newTab = { id: tabs.length + 1, name: domain, url: url_ };
+    const domain = new URL(left_url).hostname.split('.')[0];
+    const newTab = { id: tabs.length + 1, name: domain, url: left_url };
     setTabs([...tabs, newTab]);
     try {
-      await invoke('new_left_url', { url: url_ });
+      await invoke('new_left_url', { url: left_url });
     } catch (error) {
       console.error("Error invoking Tauri command:", error);
     }
   };
 
-  const refrechSubmit = async () => {
+  const refreshSubmit = async () => {
     try {
       await invoke('new_left_url', { url: url_ });
     } catch (error) {
@@ -80,9 +75,19 @@ function App() {
   useLayoutEffect(() => {
     const fetchData = async () => {
       const store = await load('store.json', { autoSave: false });
-      const val = await store.get('ratio_of_screen');
-      const newWidth = 100.0 - 100.0 / val["value"];
-      setWidth_(`calc(${newWidth}% - 16px)`);
+      try {
+        const newTabs = await loadFromLocalStorage('tabs');
+        setTabs(newTabs);
+      } catch (error) {
+        setTabs([{ id: 1, name: 'Google', url: 'https://google.com' }])
+      }
+      try {
+        const val = await store.get('left_width');
+        const newWidth = val["value"];
+        setWidth_(newWidth)
+      } catch (error) {
+        setWidth_(window.innerWidth * 4.0 / 5.0);
+      }
     };
     fetchData();
   }, []);
@@ -93,20 +98,66 @@ function App() {
     });
   }, []);
 
-  // Placeholder functions for button actions (minimize, maximize, close)
-  const handleMinimize = () => {
-    console.log("Minimize clicked");
-    // Add Tauri command for minimize here
+  useEffect(() => {
+    const fetchData = async () => {
+      const store = await load('store.json', { autoSave: false });
+      if(width_ !== undefined){
+        await store.set('left_width', { value: width_ });
+      }
+    };
+    fetchData();
+  }, [width_])
+
+  useEffect(() => {
+    const saveTabs = async () => {
+      try {
+        await saveToLocalStorage('tabs', tabs);
+      } catch (error) {
+        console.error('Error saving tabs:', error);
+      }
+    };
+
+    if (tabs.length > 0) { // Optional condition to avoid running on initial render
+      saveTabs();
+    }
+  }, [tabs])
+
+  const handleMouseDown = (e) => {
+    e.preventDefault();
+    const startX = e.clientX; // Initial mouse position
+    const initialWidth = width_; // Current width value
+  
+    const handleMouseMove = async (moveEvent) => {
+      const deltaX = moveEvent.clientX - startX; // Difference in X position
+      const newWidth = Math.max(0, initialWidth + deltaX); // Ensure width doesn't go negative
+  
+      setWidth_(newWidth);
+      try {
+        await invoke('new_left_width', { width: newWidth });
+      } catch (error) {
+        console.error("Error invoking Tauri command:", error);
+      }
+    };
+  
+    const handleMouseUp = () => {
+      document.removeEventListener('mousemove', handleMouseMove);
+      document.removeEventListener('mouseup', handleMouseUp);
+    };
+  
+    document.addEventListener('mousemove', handleMouseMove);
+    document.addEventListener('mouseup', handleMouseUp);
   };
 
-  const handleMaximize = () => {
-    console.log("Maximize clicked");
-    // Add Tauri command for maximize here
+  const handleMinimize = async () => {
+    await getCurrentWindow().minimize();
   };
 
-  const handleClose = () => {
-    console.log("Close clicked");
-    // Add Tauri command for close here
+  const handleMaximize = async () => {
+    await getCurrentWindow().maximize();
+  };
+
+  const handleClose = async () => {
+    await getCurrentWindow().destroy();
   };
 
   return (
@@ -120,8 +171,9 @@ function App() {
           display="flex"
           justifyContent="left"
           alignItems="center"
-          padding="5px 5px 0 5px"
-          backgroundColor="#F1F1F1" // Light gray background (like Chrome)
+          padding="10px 10px 0 10px"
+          borderRadius="8px 8px 0 0"
+          backgroundColor="#a3c9ff" // Light gray background (like Chrome)
         >
           {tabs.map((tab) => (
             <Tab
@@ -132,7 +184,7 @@ function App() {
               padding={0}
               bg={activeTab === tabs.indexOf(tab) ? "#FFFFFF" : "#E0E0E0"} // Active tab highlight
               borderRadius="3px"
-              maxWidth="80px"
+              maxWidth="100px"
               margin="1px"
             >
               <Box
@@ -168,7 +220,6 @@ function App() {
           ))}
           <Box
             position="absolute"
-            top="0"
             right="0"
             zIndex="999"
             display="flex"
@@ -203,7 +254,7 @@ function App() {
               icon={<FiRefreshCcw />}
               aria-label="Refresh"
               size="xs"
-              onClick={refrechSubmit}
+              onClick={refreshSubmit}
               _hover={{
                 backgroundColor: "#E0E0E0", // Light gray on hover
               }}
@@ -221,6 +272,17 @@ function App() {
           </form>
         </Box>
       </Tabs>
+      <Box
+        width='100%'
+        height='calc(100vh - 85px)'
+        ref={containerRef}
+      >
+        <Box
+          marginLeft={`${width_}px`}
+          className="splitter"
+          onMouseDown={handleMouseDown}
+        ></Box>
+      </Box>
     </ChakraProvider>
   );
 }

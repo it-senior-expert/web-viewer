@@ -51,3 +51,16 @@
   outline: none;
   background-color: #fff;
 }
+
+.splitter {
+  cursor: ew-resize;
+  width: 2px;
+  background-color: #adc6e9;
+  height: 100%;
+  display: inline-block;
+  transition: background-color 0.3s;
+}
+
+.splitter:hover {
+  background-color: #aaa;
+}

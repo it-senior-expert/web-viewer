@@ -9,13 +9,14 @@
     "beforeBuildCommand": "yarn build",
     "frontendDist": "../dist"
   },
-    "app": {
+  "app": {
     "windows": [
       {
         "title": "webview-project",
         "maximized": true,
-        "resizable": false
-       }
+        "resizable": false,
+        "decorations": false
+      }
     ],
     "security": {
       "csp": null
