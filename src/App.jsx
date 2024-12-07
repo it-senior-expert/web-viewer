@@ -73,41 +73,32 @@ function App() {
   };
 
   useLayoutEffect(() => {
-    try {
-      const newTabs = loadFromLocalStorage('tabs');
-      console.log(newTabs)
-      setTabs(newTabs);
-    } catch (error) {
+    let newTabs = loadFromLocalStorage('tabs');
+    if (newTabs == null) {
       setTabs([{ id: 1, name: 'Google', url: 'https://google.com' }])
     }
+    else {
+      setTabs(newTabs);
+    }
+
+    let newWidth = loadFromLocalStorage('left_width');
+    if (newWidth == null) {
+      newWidth = window.innerWidth * 4.0 / 5.0
+      setWidth_(newWidth)
+    }
+    else {
+      setWidth_(newWidth)
+    }
     const fetchData = async () => {
-      const store = await load('store.json', { autoSave: false });
       try {
-        const val = await store.get('left_width');
-        const newWidth = val["value"];
-        setWidth_(newWidth)
+        console.log(window.innerHeight)
+        await invoke('new_size', { leftWidth: newWidth, width: window.innerWidth, height: window.innerHeight });
       } catch (error) {
-        setWidth_(window.innerWidth * 4.0 / 5.0);
+        console.error("Error invoking Tauri command:", error);
       }
     };
     fetchData();
   }, []);
-
-  useEffect(() => {
-    listen('new-width', (event) => {
-      setWidth_(event.payload - 16);
-    });
-  }, []);
-
-  useEffect(() => {
-    const fetchData = async () => {
-      const store = await load('store.json', { autoSave: false });
-      if (width_ !== undefined) {
-        await store.set('left_width', { value: width_ });
-      }
-    };
-    fetchData();
-  }, [width_])
 
   useEffect(() => {
     const saveTabs = async () => {
@@ -118,26 +109,26 @@ function App() {
       }
     };
 
-    if (tabs.length > 0) { // Optional condition to avoid running on initial render
+    if (tabs.length > 0) {
       saveTabs();
     }
   }, [tabs])
 
   const handleMouseDown = (e) => {
     e.preventDefault();
-    const startX = e.clientX; // Initial mouse position
-    const initialWidth = width_; // Current width value
+    const startX = e.clientX; 
+    const initialWidth = width_; 
 
     const handleMouseMove = async (moveEvent) => {
-      const deltaX = moveEvent.clientX - startX; // Difference in X position
-      const newWidth = Math.max(0, initialWidth + deltaX); // Ensure width doesn't go negative
-
-      setWidth_(newWidth);
+      const deltaX = moveEvent.clientX - startX;
+      const newWidth = Math.max(0, initialWidth + deltaX);
+      await invoke('new_size', { leftWidth: newWidth, width: window.innerWidth, height: window.innerHeight});
       try {
-        await invoke('new_left_width', { width: newWidth });
+        await saveToLocalStorage('left_width', newWidth);
       } catch (error) {
-        console.error("Error invoking Tauri command:", error);
+        console.error('Error saving width:', error);
       }
+      setWidth_(newWidth);
     };
 
     const handleMouseUp = () => {
@@ -174,7 +165,7 @@ function App() {
           alignItems="center"
           padding="10px 10px 0 10px"
           borderRadius="8px 8px 0 0"
-          backgroundColor="#a3c9ff" // Light gray background (like Chrome)
+          backgroundColor="#a3c9ff"
         >
           {tabs.map((tab) => (
             <Tab
@@ -183,7 +174,7 @@ function App() {
               display="flex"
               alignItems="center"
               padding={0}
-              bg={activeTab === tabs.indexOf(tab) ? "#FFFFFF" : "#E0E0E0"} // Active tab highlight
+              bg={activeTab === tabs.indexOf(tab) ? "#FFFFFF" : "#E0E0E0"}
               borderRadius="3px"
               maxWidth="100px"
               margin="1px"
@@ -198,7 +189,7 @@ function App() {
                   overflow: "hidden",
                   whiteSpace: "nowrap",
                   textOverflow: "ellipsis",
-                  color: "#333333", // Darker text color for contrast
+                  color: "#333333", 
                 }}
               >
                 {tab.name}
@@ -210,9 +201,9 @@ function App() {
                 p={0}
                 minWidth="20px"
                 ml={1}
-                color="#888888" // Light gray color for the "X"
+                color="#888888"
                 _hover={{
-                  backgroundColor: "#D3D3D3", // Light gray hover effect
+                  backgroundColor: "#D3D3D3",
                 }}
               >
                 X
@@ -257,7 +248,7 @@ function App() {
               size="xs"
               onClick={refreshSubmit}
               _hover={{
-                backgroundColor: "#E0E0E0", // Light gray on hover
+                backgroundColor: "#E0E0E0",
               }}
             />
             <Input
@@ -267,7 +258,7 @@ function App() {
               borderRadius="md"
               marginLeft="5px"
               _focus={{
-                borderColor: "#888888", // Light gray border focus
+                borderColor: "#888888",
               }}
             />
           </form>
