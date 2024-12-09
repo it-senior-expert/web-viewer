@@ -13,15 +13,16 @@ lazy_static! {
     static ref WEBVIEW1: Mutex<Option<Arc<Mutex<Webview>>>> = Mutex::new(None);
     static ref WEBVIEW2: Mutex<Option<Arc<Mutex<Webview>>>> = Mutex::new(None);
 }
-use serde_json:: Number;
+use serde_json::Number;
 use std::sync::{Arc, Mutex};
 use tauri::image::Image;
 use tauri::{
-    menu::{Menu, MenuItem, SubmenuBuilder, MenuBuilder, MenuItemBuilder},
+    menu::{Menu, MenuBuilder, MenuItem, MenuItemBuilder, SubmenuBuilder},
     tray::TrayIconBuilder,
 };
 use tauri::{AppHandle, Emitter};
 use tauri::{LogicalPosition, LogicalSize, Manager, Webview, WebviewUrl};
+use tauri_plugin_dialog::{DialogExt, MessageDialogButtons, MessageDialogKind};
 #[cfg_attr(not(debug_assertions), windows_subsystem = "windows")]
 #[tauri::command]
 fn submit_width(app_handle: AppHandle, width_: f64) {
@@ -40,17 +41,23 @@ async fn new_size(_app_handle: tauri::AppHandle, leftWidth: Number, width: Numbe
     // Lock the WEBVIEW1 and WEBVIEW2 to make sure they are safely accessed and updated.
     let mut webview1 = WEBVIEW1.lock().unwrap();
     let mut webview2 = WEBVIEW2.lock().unwrap();
-    *WEBVIEW_WIDTH.lock().unwrap() = width.as_f64().unwrap_or(0.0); 
-    *WEBVIEW_HEIGHT.lock().unwrap() = height.as_f64().unwrap_or(0.0); 
+    *WEBVIEW_WIDTH.lock().unwrap() = width.as_f64().unwrap_or(0.0);
+    *WEBVIEW_HEIGHT.lock().unwrap() = height.as_f64().unwrap_or(0.0);
     if let Some(webview1_instance) = &mut *webview1 {
         // Update the width of WEBVIEW1
         let window = webview1_instance.lock().unwrap();
         let new_webview1_width = new_left_width;
 
-        if let Err(e) = window.set_size(tauri::LogicalSize::new(new_webview1_width, new_width), ) {
+        if let Err(e) = window.set_size(tauri::LogicalSize::new(
+            new_webview1_width,
+            new_height - 77.0,
+        )) {
             eprintln!("Failed to set new width for WEBVIEW1: {}", e);
         } else {
-            println!("Successfully updated WEBVIEW1 width to: {}", new_webview1_width);
+            println!(
+                "Successfully updated WEBVIEW1 width to: {}",
+                new_webview1_width
+            );
         }
     } else {
         eprintln!("Error: Webview 'main2' not found!");
@@ -59,20 +66,31 @@ async fn new_size(_app_handle: tauri::AppHandle, leftWidth: Number, width: Numbe
         // Update the width and position of WEBVIEW2
         let window = webview2_instance.lock().unwrap();
         let new_webview2_width = new_width - new_left_width; // Ensure the total width is maintained
-    
+
         // Calculate the new position for WEBVIEW2
         let new_position_x = new_left_width; // Position the second webview at the end of the first one
-    
-        if let Err(e) = window.set_size(tauri::LogicalSize::new(new_webview2_width, new_height)) {
+
+        if let Err(e) = window.set_size(tauri::LogicalSize::new(
+            new_webview2_width,
+            new_height - 40.0,
+        )) {
             eprintln!("Failed to set new width for WEBVIEW2: {}", e);
         } else {
-            println!("Successfully updated WEBVIEW2 width to: {}", new_webview2_width);
+            println!(
+                "Successfully updated WEBVIEW2 width to: {}",
+                new_webview2_width
+            );
         }
-    
-        if let Err(e) = window.set_position(tauri::LogicalPosition::new(new_position_x + 10.0, 40.0)) {
+
+        if let Err(e) =
+            window.set_position(tauri::LogicalPosition::new(new_position_x + 10.0, 40.0))
+        {
             eprintln!("Failed to set new position for WEBVIEW2: {}", e);
         } else {
-            println!("Successfully updated WEBVIEW2 position to: ({}, 0)", new_position_x + 10.0);
+            println!(
+                "Successfully updated WEBVIEW2 position to: ({}, 0)",
+                new_position_x + 10.0
+            );
         }
     } else {
         eprintln!("Error: Webview 'main3' not found!");
@@ -117,58 +135,57 @@ pub fn run() {
     tauri::Builder::default()
         .plugin(tauri_plugin_store::Builder::default().build())
         .plugin(tauri_plugin_notification::init())
+        .plugin(tauri_plugin_dialog::init())
         .setup(|app| {
             use tauri_plugin_notification::NotificationExt;
             app.notification()
                 .builder()
-                .title("Tauri")
+                .title("Web-Viewer")
                 .body("This is webview appication.")
                 .show()
                 .unwrap();
 
-            // Create menu items
-            let guide = MenuItemBuilder::with_id("Guide", "Guide").build(app)?;
-            let menu = MenuBuilder::new(app).items(&[&guide]).build()?;
-            let submenu = SubmenuBuilder::new(app, "Resize")
-                .item(&MenuItem::with_id(app, "8:2", "8:2", true, None::<&str>)?)
-                .item(&MenuItem::with_id(app, "7:3", "7:3", true, None::<&str>)?)
-                .item(&MenuItem::with_id(app, "6:4", "6:4", true, None::<&str>)?)
-                .item(&MenuItem::with_id(app, "5:5", "5:5", true, None::<&str>)?)
-                .build()?;
-            menu.append(&submenu)?;
-            app.set_menu(menu)?;
-
+            let settings_i = MenuItem::with_id(app, "settings", "Settings", true, None::<&str>)?;
             let alwaysontop_i =
                 MenuItem::with_id(app, "always_on_top", "Always On Top", true, None::<&str>)?;
             let quit_i = MenuItem::with_id(app, "quit", "Quit", true, None::<&str>)?;
-            let menu1 = Menu::with_items(app, &[&alwaysontop_i, &quit_i])?;
+            let menu1 = Menu::with_items(app, &[&settings_i, &alwaysontop_i, &quit_i])?;
 
             let _tray = TrayIconBuilder::new()
                 .icon(Image::from_path("./icons/icon.png")?)
                 .menu(&menu1)
-                .on_menu_event(|app, event| {
-                    match event.id.as_ref() {
-                        "always_on_top" => {
-                            // Get the main window
-                            if let Some(window) = app.get_window("main") {
-                                // Set the window to always on top or remove the setting based on the current state
-                                let mut always_on_top = ALWAYS_ON_TOP.lock().unwrap();
-                                *always_on_top = !*always_on_top; // Toggle the value
+                .on_menu_event(|app, event| match event.id.as_ref() {
+                    "settings" => {
+                        let handle = app.clone();
+                        std::thread::spawn(move || {
+                            let webview_window = tauri::WebviewWindowBuilder::new(
+                                &handle,
+                                "setting_window",
+                                tauri::WebviewUrl::App("index_setting.html".into()),
+                            )
+                            .inner_size(480.0, 250.0)
+                            .build()
+                            .unwrap();
+                        });
+                    }
+                    "always_on_top" => {
+                        if let Some(window) = app.get_window("main") {
+                            let mut always_on_top = ALWAYS_ON_TOP.lock().unwrap();
+                            *always_on_top = !*always_on_top;
 
-                                if *always_on_top {
-                                    window.set_always_on_top(true).unwrap();
-                                } else {
-                                    window.set_always_on_top(false).unwrap();
-                                }
+                            if *always_on_top {
+                                window.set_always_on_top(true).unwrap();
+                            } else {
+                                window.set_always_on_top(false).unwrap();
                             }
                         }
-                        "quit" => {
-                            println!("quit menu item was clicked");
-                            app.exit(0);
-                        }
-                        _ => {
-                            println!("menu item {:?} not handled", event.id);
-                        }
+                    }
+                    "quit" => {
+                        println!("quit menu item was clicked");
+                        app.exit(0);
+                    }
+                    _ => {
+                        println!("menu item {:?} not handled", event.id);
                     }
                 })
                 .build(app)?;
@@ -184,9 +201,9 @@ pub fn run() {
             let new_webview_height2 = *WEBVIEW_HEIGHT.lock().unwrap();
 
             // window
-                // .set_min_size(Some(tauri::LogicalSize::new(width, height)))
-                // .expect("Failed to set window minimum size");
-                
+            // .set_min_size(Some(tauri::LogicalSize::new(width, height)))
+            // .expect("Failed to set window minimum size");
+
             // Add the first webview (left side)
             let webview1 = window.add_child(
                 tauri::webview::WebviewBuilder::new(
@@ -196,7 +213,10 @@ pub fn run() {
                 .devtools(true)
                 .auto_resize(),
                 LogicalPosition::new(0.0, 77.0),
-                LogicalSize::new(new_webview_width1 - 5.0, (new_webview_height1 as f64) - 77.0),
+                LogicalSize::new(
+                    new_webview_width1 - 5.0,
+                    (new_webview_height1 as f64) - 77.0,
+                ),
             )?;
 
             *WEBVIEW1.lock().unwrap() = Some(Arc::new(Mutex::new(webview1.clone())));
@@ -209,8 +229,11 @@ pub fn run() {
                 )
                 .devtools(true)
                 .auto_resize(),
-                LogicalPosition::new(new_webview_width1 + 10.0, 40.0), // Position the second webview
-                LogicalSize::new(new_webview_width2 - 10.0 , (new_webview_height2 as f64) - 40.0), // Width based on the ratio
+                LogicalPosition::new(new_webview_width1 + 5.0, 40.0), // Position the second webview
+                LogicalSize::new(
+                    new_webview_width2 - 5.0,
+                    (new_webview_height2 as f64) - 40.0,
+                ), // Width based on the ratio
             )?;
 
             *WEBVIEW2.lock().unwrap() = Some(Arc::new(Mutex::new(webview2.clone())));

@@ -1,24 +1,39 @@
 import { useEffect, useState, useLayoutEffect, useRef } from "react";
 import { Box, Tabs, TabList, Tab, Button, Input, IconButton } from '@chakra-ui/react';
 import { ChakraProvider } from "@chakra-ui/react";
-import { useToast } from "@chakra-ui/react";
 import { FiRefreshCcw, FiX, FiMinimize2, FiMaximize2 } from "react-icons/fi";
 import { invoke } from "@tauri-apps/api/core";
-import { listen } from '@tauri-apps/api/event';
-import { load } from '@tauri-apps/plugin-store';
 import { getCurrentWindow } from '@tauri-apps/api/window';
 import "./App.css";
 
 import { isValidUrl, saveToLocalStorage, loadFromLocalStorage } from "./utils";
 
+function useLocalStorageWatcher(callback) {
+  useEffect(() => {
+    const handleStorageChange = (event) => {
+      if (event.storageArea === localStorage) {
+        callback(event);
+      }
+    };
+
+    window.addEventListener('storage', handleStorageChange);
+
+    return () => {
+      window.removeEventListener('storage', handleStorageChange);
+    };
+  }, [callback]);
+}
+
 function App() {
-  const [url_, setUrl_] = useState("https://google.com");
+  const [url_, setUrl_] = useState("");
   const [width_, setWidth_] = useState();
   const [tabs, setTabs] = useState([]);
   const [activeTab, setActiveTab] = useState(0);
   const containerRef = useRef(null);
-  const toast = useToast();
-
+  
+  useLocalStorageWatcher((event) => {
+    console.log('Storage changed: ', event.key, event.newValue);
+  });
   const removeTab = async (tabId) => {
     const updatedTabs = tabs.filter((tab) => tab.id !== tabId);
     setTabs(updatedTabs);
@@ -32,21 +47,13 @@ function App() {
   const leftURLSubmit = async (e) => {
     e.preventDefault();
     let left_url = url_
-    if (!left_url.includes("https://")) {
-      left_url = "https://" + left_url
-    }
     if (!isValidUrl(left_url)) {
-      toast({
-        title: "Invalid URL",
-        status: "warning",
-        position: 'top-left',
-        duration: 2000,
-        isClosable: true,
-      });
-      return;
+      left_url = `https://www.google.com/search?q=${url_}`
     }
-    const domain = new URL(left_url).hostname.split('.')[0];
-    const newTab = { id: tabs.length + 1, name: domain, url: left_url };
+    // const domain = new URL(left_url).hostname.split('.')[1];
+    const domain = left_url.split('//')[1];
+    const newTab = { id: tabs[tabs.length - 1].id + 1, name: domain, url: left_url };
+    setActiveTab(tabs.length)
     setTabs([...tabs, newTab]);
     try {
       await invoke('new_left_url', { url: left_url });
@@ -63,38 +70,87 @@ function App() {
     }
   }
 
-  const rightURLSubmit = async (index) => {
-    const right_url = tabs[index].url;
+  const leftURLSubmitTab = async (index) => {
+    const left_url = tabs[index].url;
     try {
-      await invoke('new_right_url', { url: right_url });
+      await invoke('new_left_url', { url: left_url });
     } catch (error) {
       console.error("Error invoking Tauri command:", error);
     }
   };
 
+  const handleMouseDown = (e) => {
+    e.preventDefault();
+    const isMobile = window.innerWidth <= 390;
+    const startValue = isMobile ? e.clientY : e.clientX; // Use Y-axis for mobile, X-axis otherwise
+    const initialValue = width_; // Common state for both cases
+
+    const handleMouseMove = async (moveEvent) => {
+      const deltaValue = isMobile
+        ? moveEvent.clientY - startValue
+        : moveEvent.clientX - startValue;
+
+      const newValue = Math.max(0, initialValue + deltaValue);
+      await invoke('new_size', {
+        leftWidth: isMobile ? width_ : newValue,
+        width: window.innerWidth,
+        height: isMobile ? newValue : window.innerHeight,
+      });
+
+      try {
+        await saveToLocalStorage(isMobile ? 'top_height' : 'left_width', newValue);
+      } catch (error) {
+        console.error('Error saving size:', error);
+      }
+
+      setWidth_(newValue);
+    };
+
+    const handleMouseUp = () => {
+      document.removeEventListener('mousemove', handleMouseMove);
+      document.removeEventListener('mouseup', handleMouseUp);
+    };
+
+    document.addEventListener('mousemove', handleMouseMove);
+    document.addEventListener('mouseup', handleMouseUp);
+  };
+  const handleMinimize = async () => {
+    await getCurrentWindow().minimize();
+  };
+
+  const handleMaximize = async () => {
+    await getCurrentWindow().maximize();
+  };
+
+  const handleClose = async () => {
+    await getCurrentWindow().destroy();
+  };
+
   useLayoutEffect(() => {
     let newTabs = loadFromLocalStorage('tabs');
     if (newTabs == null) {
-      setTabs([{ id: 1, name: 'Google', url: 'https://google.com' }])
-    }
-    else {
+      setTabs([{ id: 1, name: 'Google', url: 'https://google.com' }]);
+    } else {
       setTabs(newTabs);
     }
 
-    let newWidth = loadFromLocalStorage('left_width');
-    if (newWidth == null) {
-      newWidth = window.innerWidth * 4.0 / 5.0
-      setWidth_(newWidth)
+    let newSize = loadFromLocalStorage(window.innerWidth <= 390 ? 'top_height' : 'left_width');
+    if (newSize == null) {
+      newSize = window.innerWidth * 4.0 / 5.0;
+      setWidth_(newSize);
+    } else {
+      setWidth_(newSize);
     }
-    else {
-      setWidth_(newWidth)
-    }
+
     const fetchData = async () => {
       try {
-        console.log(window.innerHeight)
-        await invoke('new_size', { leftWidth: newWidth, width: window.innerWidth, height: window.innerHeight });
+        await invoke('new_size', {
+          leftWidth: window.innerWidth <= 390 ? width_ : newSize,
+          width: window.innerWidth,
+          height: window.innerHeight,
+        });
       } catch (error) {
-        console.error("Error invoking Tauri command:", error);
+        console.error('Error invoking Tauri command:', error);
       }
     };
     fetchData();
@@ -113,44 +169,6 @@ function App() {
       saveTabs();
     }
   }, [tabs])
-
-  const handleMouseDown = (e) => {
-    e.preventDefault();
-    const startX = e.clientX; 
-    const initialWidth = width_; 
-
-    const handleMouseMove = async (moveEvent) => {
-      const deltaX = moveEvent.clientX - startX;
-      const newWidth = Math.max(0, initialWidth + deltaX);
-      await invoke('new_size', { leftWidth: newWidth, width: window.innerWidth, height: window.innerHeight});
-      try {
-        await saveToLocalStorage('left_width', newWidth);
-      } catch (error) {
-        console.error('Error saving width:', error);
-      }
-      setWidth_(newWidth);
-    };
-
-    const handleMouseUp = () => {
-      document.removeEventListener('mousemove', handleMouseMove);
-      document.removeEventListener('mouseup', handleMouseUp);
-    };
-
-    document.addEventListener('mousemove', handleMouseMove);
-    document.addEventListener('mouseup', handleMouseUp);
-  };
-
-  const handleMinimize = async () => {
-    await getCurrentWindow().minimize();
-  };
-
-  const handleMaximize = async () => {
-    await getCurrentWindow().maximize();
-  };
-
-  const handleClose = async () => {
-    await getCurrentWindow().destroy();
-  };
 
   return (
     <ChakraProvider>
@@ -177,10 +195,10 @@ function App() {
               bg={activeTab === tabs.indexOf(tab) ? "#FFFFFF" : "#E0E0E0"}
               borderRadius="3px"
               maxWidth="100px"
+              onClick={() => leftURLSubmitTab(activeTab)}
               margin="1px"
             >
               <Box
-                onClick={() => rightURLSubmit(activeTab)}
                 style={{
                   display: "flex",
                   justifyContent: "flex-start",
@@ -189,7 +207,7 @@ function App() {
                   overflow: "hidden",
                   whiteSpace: "nowrap",
                   textOverflow: "ellipsis",
-                  color: "#333333", 
+                  color: "#333333",
                 }}
               >
                 {tab.name}
@@ -266,14 +284,21 @@ function App() {
       </Tabs>
       <Box
         width='100%'
-        height='calc(100vh - 83px)'
+        height='calc(100vh - 107px)'
         ref={containerRef}
       >
         <Box
-          marginLeft={`${width_}px`}
           className="splitter"
           onMouseDown={handleMouseDown}
-        ></Box>
+          style={{
+            marginLeft: window.innerWidth <= 390 ? 0 : width_,
+            width: window.innerWidth <= 390 ? '100%' : '2px',
+            height: window.innerWidth <= 390 ? '2px' : '100%',
+            cursor: window.innerWidth <= 390 ? 'row-resize' : 'col-resize',
+            backgroundColor: '#ccc',
+          }}
+        />
+        <Box position="absolute">Hello</Box>
       </Box>
     </ChakraProvider>
   );

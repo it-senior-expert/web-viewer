@@ -1,4 +1,5 @@
-/* body{
+/* Body styling */
+body {
   margin: 0 !important;
 }
 
@@ -52,6 +53,7 @@
   background-color: #fff;
 }
 
+/* Default Splitter (Vertical) */
 .splitter {
   cursor: ew-resize;
   width: 2px;
@@ -63,4 +65,18 @@
 
 .splitter:hover {
   background-color: #aaa;
+}
+
+/* Horizontal Splitter for Mobile Screens */
+@media screen and (max-width: 390px) {
+  .splitter {
+    cursor: row-resize;
+    height: 2px;
+    width: 100%;
+    display: block;
+  }
+
+  .input-container {
+    padding: 5px 2px 0; /* Adjust padding for mobile layout */
+  }
 }
